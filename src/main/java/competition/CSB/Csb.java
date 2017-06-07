@@ -181,8 +181,11 @@ public class Csb {
         int nextCheckpointId;
         int checked = 0;
         int timeout = 0;
+        int thrust = 0;
         Pod partner;
         boolean shield;
+
+        double breakDist;
 
         public PID pid = new PID();
         public int nbCP;
@@ -246,6 +249,19 @@ public class Csb {
             }
         }
 
+        public int calThrust(Point p, Point pNext) {
+
+            double angle = 0;
+
+            if (this.distance(p) > breakDist)
+                angle =  this.diffAngle(p);
+            else
+                angle = this.diffAngle(pNext) ;
+
+
+            return (int)pid.processing(angle);
+        }
+
 
         void boost(int thrust) {
             // Don't forget that a pod which has activated its shield cannot accelerate for 3 turns
@@ -259,6 +275,8 @@ public class Csb {
             // Trigonometry
             this.vx += Math.cos(ra) * thrust;
             this.vy += Math.sin(ra) * thrust;
+
+            this.thrust = thrust;
         }
 
         void move(double t) {
@@ -277,9 +295,9 @@ public class Csb {
             this.timeout -= 1;
         }
 
-        void play(Point p) {
+        void play(Point p, Point pNext) {
             this.rotate(p);
-            this.boost((int) this.pid.processing(this.diffAngle(p)));
+            this.boost(calThrust(p,pNext));
         }
 
         void play(PodS[] pods, List<Checkpoint> checkpoints) {
@@ -441,9 +459,15 @@ nextCheckpointAngle: 4284
         void start() {
             while(pod[myPod].checked < 12) {
                 Checkpoint cp = cpList.get(pod[myPod].nextCheckpointId);
-                pod[0].play(cp);
+                pod[0].play(cp, pod[myPod].nextCheckpointId < 3 ? cpList.get(pod[myPod].nextCheckpointId+1) : cp);
                 pod[0].play(pod, cpList);
                 loop ++;
+
+                //failled
+                if (pod[myPod].timeout == 0)  {
+                    loop = 1000;
+                    return;
+                }
             }
 
             System.err.println("loop: " + loop);
@@ -458,8 +482,8 @@ nextCheckpointAngle: 4284
 
     private static class Combination {
         public static Csb.Combination newInstance() {
-            generatorValue = random.nextDouble();
-            return new Csb.Combination(generatorValue, generatorValue, generatorValue, generatorValue);
+            generatorValue = (generatorValue + 0.1) % 1;
+            return new Csb.Combination(generatorValue, generatorValue, generatorValue, generatorValue*3000);
         }
 
         double Kp = 0.15;
@@ -480,10 +504,12 @@ nextCheckpointAngle: 4284
             Simu sim = new Simu();
             sim.init();
             sim.pod[myPod].pid.init(Kp, Ki,Kd);
+            sim.pod[myPod].breakDist = breakDist;
             sim.start();
 
 
-            return sim.loop;
+            //inverse score
+            return 1000 - sim.loop;
         }
 
 
@@ -526,10 +552,13 @@ nextCheckpointAngle: 4284
                 Collections.shuffle(list, random);
             });
 */
-            algo.initialize(9);
-            algo.iterate(100, 5, 20, 20, 20);
+            algo.initialize(10);
+            algo.iterate(1000, 15, 20, 20, 20);
             //algo.printTo(System.err);
             System.err.println(algo.best().toString());
+
+
+            algo.best().evaluate();
         }
 
     }
